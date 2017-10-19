@@ -1,13 +1,8 @@
 package com.game;
 
-
-import java.beans.Statement;
 import java.rmi.registry.Registry;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.server.UnicastRemoteObject;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.util.StringJoiner;
 
 
 //2 - не установлен камень
@@ -15,10 +10,12 @@ import java.util.StringJoiner;
 //0 - установлен черный камень
 
 public class Server implements GameLogic {
-    private int lastX, lastY;
+    private int lastX = -1, lastY = -1;
     private boolean id1 = false;
     private static int [][]board = new int[19][19];
     private static int []counter = new int[2];
+    private static int whoWon = 2;
+
 
     public Server() {
         for(int i=0; i<18; i++)
@@ -47,7 +44,7 @@ public class Server implements GameLogic {
         if(counter[checkColor]>=6)
             return true;
         else{
-            //Проверка по горизонтали
+            //Проверка по вертикали
             counter[checkColor] = 0;
             currentX = x;
             currentY = y;
@@ -111,13 +108,19 @@ public class Server implements GameLogic {
 
     public void setPoint(int x, int y, int color) {
         board[x][y] = color;
+        lastX = x;
+        lastY = y;
+
         if(checkWin(x,y,color)) {
-            System.out.print("Победили ");
             if(color==1)
-                System.out.print("Белые");
+                whoWon = 1;
             else
-                System.out.print("Черные");
+                whoWon = 0;
         }
+    }
+
+    public int whoWon(){
+        return whoWon;
     }
 
     public int getColor(){
@@ -128,6 +131,15 @@ public class Server implements GameLogic {
         else{
             return 1;
         }
+    }
+
+    public int[] getEnemyTurn(){
+        int[] enemy = new int[2];
+        enemy[0] = lastX;
+        enemy[1] = lastY;
+        lastX = -1;
+        lastY = -1;
+        return enemy;
     }
 
 
