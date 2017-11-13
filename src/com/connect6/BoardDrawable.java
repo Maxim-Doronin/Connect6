@@ -4,7 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 
 public class BoardDrawable extends JPanel {
-    private Image img = new ImageIcon("./images/board.png").getImage();
+    private Image img = new ImageIcon("src/images/board.png").getImage();
     private JFrame mFrame;
     private boolean mIsMyTurn;
     private JLabel mText;

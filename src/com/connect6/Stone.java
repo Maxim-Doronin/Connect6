@@ -17,9 +17,9 @@ public class Stone extends JPanel {
         mDrawableX = drawableX;
         mDrawableY = drawableY;
         if (color == Color.WHITE) {
-            mStoneImg = new ImageIcon("./images/white-stone.gif").getImage();
+            mStoneImg = new ImageIcon("src/images/white-stone.gif").getImage();
         } else if (color == Color.BLACK) {
-            mStoneImg = new ImageIcon("./images/black-stone.gif").getImage();
+            mStoneImg = new ImageIcon("src/images/black-stone.gif").getImage();
         }
     }
 

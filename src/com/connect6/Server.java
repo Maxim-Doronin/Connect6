@@ -1,24 +1,29 @@
 package com.connect6;
 
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
-import java.rmi.server.UnicastRemoteObject;
 
-public class Server implements GameInterface {
+import com.connect6.ServerCommunication.RequestThread;
+import com.connect6.ServerCommunication.ResponseThread;
+
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.ArrayList;
+
+public class Server {
+    private ServerSocket serverSocket = null;
     private Board mBoard;
     private int mPlayersCount;
     private int mLastTurnId = 0;
 
-    private Server() {
-        mBoard = new Board();
-        mPlayersCount = 0;
-    }
+    private ArrayList<ResponseThread> responseThreads = new ArrayList<>();
+    private ArrayList<RequestThread> requestThreads = new ArrayList<>();
 
-    public void setStone(int x, int y, Stone.Color color) {
+    public void setStone(int x, int y, int color) {
+        Stone.Color stoneColor = getColorById(color);
         if (mBoard.isCellFree(x,y)) {
             mLastTurnId++;
         }
-        mBoard.setCell(x, y, color, mLastTurnId);
+        mBoard.setCell(x, y, stoneColor, mLastTurnId);
     }
 
     public Stone.Color getColor() {
@@ -72,16 +77,86 @@ public class Server implements GameInterface {
         return result;
     }
 
-    public static void main(String args[]) {
+    private int getColorId(Stone.Color color) {
+        if (color == Stone.Color.WHITE) {
+            return 1;
+        }
+        if (color == Stone.Color.BLACK) {
+            return 2;
+        }
+        return 3;
+    }
+
+    private Stone.Color getColorById(int id) {
+        if (id ==1) {
+            return Stone.Color.WHITE;
+        }
+        if (id == 2) {
+            return Stone.Color.BLACK;
+        }
+        return Stone.Color.FREE;
+    }
+
+    public Server() {
+        mBoard = new Board();
+        mPlayersCount = 0;
+
+        final int PORT_NUMBER = 59342;
         try {
-            Server obj = new Server();
-            GameInterface gameInterface = (GameInterface) UnicastRemoteObject.exportObject(obj, 0);
-            Registry registry = LocateRegistry.getRegistry();
-            registry.rebind("Server", gameInterface);
-            System.out.println("Server is ready!");
-        } catch (Exception e) {
-            System.err.println("Server exception: " + e.toString());
-            e.printStackTrace();
+            serverSocket = new ServerSocket(PORT_NUMBER);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+            System.exit(0);
+        }
+
+        while (!serverSocket.isClosed()) {
+            try {
+                Socket clientSocket = serverSocket.accept();
+                System.out.println(clientSocket.toString());
+                RequestThread requestThread = new RequestThread(clientSocket);
+                ResponseThread responseThread = new ResponseThread(clientSocket, this);
+                requestThread.start();
+                responseThread.start();
+
+                requestThreads.add(requestThread);
+                responseThreads.add(responseThread);
+
+
+                Stone.Color playerColor = getColor();
+                Response response = new Response();
+                response.setParameter("type", "color");
+                response.setParameter("color", getColorId(playerColor));
+                requestThread.sendRequest(response);
+                if (mPlayersCount == 2) {
+                    break;
+                }
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+        while (!serverSocket.isClosed()) {
+            int trueTurn = 0;
+            int falseTurn = 1;
+            if (isMyTurn(Stone.Color.BLACK)) {
+                System.out.println("BLACK");
+                trueTurn = 0;
+                falseTurn = 1;
+            } else {
+                System.out.println("WHITE");
+                trueTurn = 1;
+                falseTurn = 0;
+            }
+            Response responseTrue = new Response();
+            responseTrue.setParameter("type", "turn");
+            responseTrue.setParameter("turn", true);
+
+            Response responseFalse = new Response();
+            responseFalse.setParameter("type", "turn");
+            responseFalse.setParameter("turn", false);
+
+            requestThreads.get(trueTurn).sendRequest(responseTrue);
+            requestThreads.get(falseTurn).sendRequest(responseFalse);
+
         }
     }
 }

@@ -1,13 +1,15 @@
 package com.connect6;
 
+import com.connect6.ClientCommunication.RequestThread;
+import com.connect6.ClientCommunication.ResponseThread;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.rmi.NotBoundException;
-import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
+import java.net.ConnectException;
+import java.net.Socket;
+import java.util.ArrayList;
 
 public class Client extends JPanel {
     private static JFrame mFrame = new JFrame("Connect6");
@@ -15,8 +17,9 @@ public class Client extends JPanel {
     private static int mX = -1, mY = -1;
 
     private static BoardDrawable mBoardDrawable;
-    private static Stone.Color mMyPlayerColor;
-    private static boolean mIsMyTurn = false;
+    private Stone.Color mMyPlayerColor = Stone.Color.FREE;
+    private boolean mIsMyTurn = false;
+    private ArrayList<ReceivedStone> mStones = new ArrayList<>();
 
     private static void createGUI() {
         mFrame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
@@ -43,63 +46,103 @@ public class Client extends JPanel {
         }
     }
 
-    public static void main(String[] args) {
+    public void setColor(int color) {
+        mMyPlayerColor = getColorById(color);
+    }
+
+    public void setIsMyTurn(boolean isMyTurn){
+        mIsMyTurn = isMyTurn;
+    }
+
+    public void setStones(ReceivedStone stone) {
+        mStones.add(stone);
+    }
+
+    private int getColorId(Stone.Color color) {
+        if (color == Stone.Color.WHITE) {
+            return 1;
+        }
+        if (color == Stone.Color.BLACK) {
+            return 2;
+        }
+        return 3;
+    }
+
+    private Stone.Color getColorById(int id) {
+        if (id ==1) {
+            return Stone.Color.WHITE;
+        }
+        if (id == 2) {
+            return Stone.Color.BLACK;
+        }
+        return Stone.Color.FREE;
+    }
+
+
+    public Client() {
         createGUI();
         safelySleep();
 
         try {
-            boolean untilConnect;
-            GameInterface gameInterface = null;
-            do {
+            Socket clientSocket = null;
+
+            final String SERVER_NAME = "localhost";
+            final int PORT_NUMBER = 59342;
+            try {
                 try {
-                    Registry registry = LocateRegistry.getRegistry(null);
-                    gameInterface = (GameInterface) registry.lookup("Server");
-                    untilConnect = false;
-                } catch (RemoteException e) {
-                    untilConnect = true;
+                    clientSocket = new Socket(SERVER_NAME, PORT_NUMBER);
+                } catch (ConnectException e) {
+                    e.printStackTrace();
                 }
-            } while (untilConnect);
-
-            mMyPlayerColor = gameInterface.getColor();
-            while (mMyPlayerColor == Stone.Color.FREE) {
-                safelySleep();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-            mBoardDrawable.drawCell(0,Resources.boardCellCount, mMyPlayerColor);
-            int lastTurnId = 1;
+            RequestThread requestThread = new RequestThread(clientSocket);
+            ResponseThread responseThread = new ResponseThread(clientSocket, this);
+            requestThread.start();
+            responseThread.start();
 
-            while (true) {
-                mIsMyTurn = gameInterface.isMyTurn(mMyPlayerColor);
+
+            int lastTurnId = 1;
+            while (clientSocket != null && !clientSocket.isClosed()) {
+                while (mMyPlayerColor == Stone.Color.FREE) {
+                    safelySleep();
+                }
+                if (lastTurnId == 1) {
+                    mBoardDrawable.drawCell(0,Resources.boardCellCount, mMyPlayerColor);
+                    lastTurnId++;
+                }
                 if (mIsMyTurn) {
                     mBoardDrawable.setTurn(true);
                     mX = (mClickX - Resources.boardBorder + Resources.stoneRadius) / Resources.cellSize;
                     mY = (mClickY - Resources.boardBorder + Resources.stoneRadius) / Resources.cellSize;
                     if (mX >= 0 && mX < Resources.boardCellCount && mY >= 0 && mY < Resources.boardCellCount) {
                         mBoardDrawable.drawCell(mX, mY, mMyPlayerColor);
-                        gameInterface.setStone(mX, mY, mMyPlayerColor);
+                        Request request = new Request();
+                        request.setParameter("type", "stone");
+                        request.setParameter("stone", new ReceivedStone(mX, mY, getColorId(mMyPlayerColor)));
+                        requestThread.sendRequest(request);
                     }
                 } else {
                     mBoardDrawable.setTurn(false);
                     mClickX = -100;
                     mClickY = -100;
                 }
-                int[] stone = gameInterface.getStoneById(lastTurnId);
-                if (stone[0] >= 0 && stone[0] < Resources.boardCellCount
-                        && stone[1] >= 0 && stone[1] < Resources.boardCellCount) {
-                    mBoardDrawable.drawCell(stone[0], stone[1], gameInterface.getColorOfStone(stone[0], stone[1]));
-                    lastTurnId++;
-                } else {
-                    Stone.Color wonColor = gameInterface.whoWon();
-                    if (wonColor != Stone.Color.FREE) {
-                        if (wonColor == mMyPlayerColor)
-                            JOptionPane.showMessageDialog(null, "Winning victory instead of lunch!");
-                        else
-                            JOptionPane.showMessageDialog(null, "Will be lucky next time :(");
-                        break;
+
+
+                if (!mStones.isEmpty()) {
+                    ReceivedStone stone = mStones.remove(0);
+                    if (stone != null && stone.x >= 0 && stone.x < Resources.boardCellCount
+                            && stone.y >= 0 && stone.y < Resources.boardCellCount){
+                        mBoardDrawable.drawCell(stone.x, stone.y, getColorById(stone.color));
+
                     }
                 }
+
                 safelySleep();
+
             }
-        } catch (RemoteException | NotBoundException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
